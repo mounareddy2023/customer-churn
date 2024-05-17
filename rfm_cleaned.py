@@ -12,7 +12,7 @@ import requests
 
 file_dir = os.path.dirname(__file__)
 base_dir = os.path.dirname(file_dir)
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/centos/data_transform/core/.mg_in_creds.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "abc.json"
 
 yesterday = datetime.now() - timedelta(1)  
 
@@ -44,7 +44,7 @@ query_1 = """
         '000' as rfm_score,
         '""" + tilldate + """' as created_on
     from
-        `myglamm-india.master_tables.master_member_table_v2` m
+        `master_member_table` m
     left outer join (
         select
             m._id as member_id,
@@ -52,15 +52,15 @@ query_1 = """
             count(distinct o.id) as order_count,
             DATE_DIFF('""" + tilldate + """', parse_date('%Y-%m-%d',max(order_date_ist)), day) as diff_in_date
         from
-            `myglamm-india.master_tables.master_order_table_v2` o
+            `master_order_table` o
         inner join
-            `myglamm-india.master_tables.master_member_table_v2` m on o.member_id = m._id
+            `master_member_table` m on o.member_id = m._id
         where
             o.order_type in (0,2)
             and o.status_id in (12,14,15,20,74,75,11)
             and m.type != 'retailer'
             and m.is_member_bg = 0
-            and o.member_id not in ('5a1d23b5c0b04949c988a5c1','59f8730fb97262240ac62a99')
+            and o.member_id not in ('123ud','456ud')
             and date_created_ist <= '""" + tilldate + """'
             and order_date_ist <= '""" + tilldate + """'
         group by
@@ -182,7 +182,7 @@ print("Loaded {} rows.".format(destination_table.num_rows))
 # member_rfm_log, which will keep a track of how the category of member evolved over time.
 
 log_append_query = '''
-INSERT `myglamm-india.data_science.member_rfm_log` (member_id, category, rfm_score, created_on) 
+INSERT `data_science.member_rfm_log` (member_id, category, rfm_score, created_on) 
 select distinct 
     member_id, 
     category, 
@@ -201,7 +201,7 @@ from (
                 *,
                 row_number() over (partition by member_id order by created_on desc) as rank
             FROM 
-                `myglamm-india.data_science.member_rfm`
+                `data_science.member_rfm`
         ) where rank = 1
     ) t1 join (
         select * from (
@@ -209,7 +209,7 @@ from (
                 *,
                 row_number() over (partition by member_id order by created_on desc) as rank
             FROM 
-                `myglamm-india.data_science.member_rfm`
+                `data_science.member_rfm`
         ) where rank = 2
     ) t2 on t1.member_id=t2.member_id
     where t1.category!=t2.category
@@ -228,7 +228,7 @@ from (
                 *,
                 row_number() over (partition by member_id order by created_on desc) as rank
             FROM 
-                `myglamm-india.data_science.member_rfm`
+                `data_science.member_rfm`
         ) where rank = 1
     ) t1 left join (
         select * from (
@@ -236,7 +236,7 @@ from (
                 *,
                 row_number() over (partition by member_id order by created_on desc) as rank
             FROM 
-                `myglamm-india.data_science.member_rfm`
+                `data_science.member_rfm`
         ) where rank = 2
     ) t2 on t1.member_id=t2.member_id
     where t1.member_id is not null and t2.member_id is null
@@ -251,12 +251,12 @@ log_append_query_job=client.query(log_append_query)
 log_append_results = log_append_query_job.result()
 
 dedup_query = '''
-create or replace table `myglamm-india.data_science.member_rfm` as
+create or replace table `data_science.member_rfm` as
 select * except(rank) from (
 SELECT 
   *,
   row_number() over (partition by member_id order by created_on desc) as rank
-FROM `myglamm-india.data_science.member_rfm`
+FROM `data_science.member_rfm`
 ) where rank = 1
 '''
 
@@ -269,18 +269,18 @@ webengage_sync_rfm = """
 select 
     t1.member_id,
     t1.category as new_rfm
-from `myglamm-india.data_science.member_rfm_log` t1
+from `data_science.member_rfm_log` t1
 where t1.created_on = '""" + tilldate + """'
 """
 
 webengage_sync_rfm_query_job=client.query(webengage_sync_rfm)
 
 webengage_sync_rfm_results = webengage_sync_rfm_query_job.result()
-url = "https://acl.mgapis.com/dump-ms/dump"
+url = "https://a.b.com/dump-ms/dump"
 headers = {
   'accept': '*/*',
   'Content-Type': 'application/json',
-  'apiKey': 'fac2c144a7da65d81c939597bf983613'
+  'apiKey': 'sudhfsjdfhksj'
 }
 
 count = 0
@@ -295,7 +295,7 @@ for row in webengage_sync_rfm_results:
 
     if(counter<10):
         temp_arr.append({
-            "vendorCode": "mgp",
+           
             "identifier": member_id,
             "key": "webengageSync",
             "value": {
@@ -321,16 +321,15 @@ for row in webengage_sync_rfm_results:
 
 '''
 
-curl --location --request POST 'https://acl.mgapis.com/dump-ms/dump' \
+curl --location --request POST 'https://a.b.com/dump-ms/dump' \
 --header 'Content-Type: application/json' \
---header 'apiKey: fac2c144a7da65d81c939597bf983613' \
+--header 'apiKey: sfgndsngbdnfg' \
 --data-raw '[
     {
-        "vendorCode": "mgp",
-        "identifier": "59b27ca219141863361aa408",
+        "identifier": "123ud",
         "key": "webengageSync",
         "value": {
-            "userId": "59b27ca219141863361aa408",
+            "userId": "123ud",
             "attributes": {
                 "RFM Category": "Promising"
             }

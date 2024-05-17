@@ -15,10 +15,7 @@ import requests
 file_dir = os.path.dirname(__file__)
 base_dir = os.path.dirname(file_dir)
 
-# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = base_dir + "/core/.mg_in_creds.json"
-# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/myglamm/zegulas/myglamm/pem/maclynn_ds_server.json"
-# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/myglamm/zegulas/zegulas/myglamm/pem/maclynn_ds_server.json"
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/centos/data_transform/core/.mg_in_creds.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
 
 yesterday = datetime.now() - timedelta(1)  
 
@@ -32,53 +29,7 @@ client=bigquery.Client()
 
 # # query_1 = "select m._id as member_id, sum(payable_amount) as total_payable_amount,count(o.id) as order_count, DATE_DIFF('" + tilldate + "', parse_date('%Y-%m-%d',max(order_date_ist)), day) as diff_in_date from `myglamm-india.master_tables.master_order_table_v2` o inner join `myglamm-india.master_tables.master_member_table_v2` m on o.member_id = m._id where o.status_id in (15) and m.type != 'retailer' and m.is_member_bg = 0 and o.member_id not in ('5a1d23b5c0b04949c988a5c1','59f8730fb97262240ac62a99') and date_created_ist <= '" + tilldate + "' and order_date_ist <= '" + tilldate + "' group by member_id"
 
-query_1 = """
-    select
-        m._id as member_id,
-        case
-            when total_payable_amount is null then 0
-            else total_payable_amount
-        end as total_payable_amount,
-        case
-            when order_count is null then 0
-            else order_count
-        end as order_count,
-        case
-            when diff_in_date is null then 0
-            else diff_in_date
-        end as diff_in_date,
-        CASE
-            WHEN DATE_DIFF(CURRENT_DATE(),date_created_ist,day) <= 60 THEN 'RNP_60'
-            WHEN DATE_DIFF(CURRENT_DATE(),date_created_ist,day) between 61 and 120 THEN 'RNP_120'
-            ELSE 'RNP_120+'
-        END as category,
-        '000' as rfm_score,
-        '""" + tilldate + """' as created_on
-    from
-        `myglamm-india.master_tables.master_member_table_v2` m
-    left outer join (
-        select
-            m._id as member_id,
-            sum(ifnull(payable_amount,0)) as total_payable_amount,
-            count(distinct o.id) as order_count,
-            DATE_DIFF('""" + tilldate + """', parse_date('%Y-%m-%d',max(order_date_ist)), day) as diff_in_date
-        from
-            `myglamm-india.master_tables.master_order_table_v2` o
-        inner join
-            `myglamm-india.master_tables.master_member_table_v2` m on o.member_id = m._id
-        where
-            o.order_type in (0,2)
-            and o.status_id in (12,14,15,20,74,75,11)
-            and m.type != 'retailer'
-            and m.is_member_bg = 0
-            and o.member_id not in ('5a1d23b5c0b04949c988a5c1','59f8730fb97262240ac62a99')
-            and date_created_ist <= '""" + tilldate + """'
-            and order_date_ist <= '""" + tilldate + """'
-        group by
-            member_id
-    ) o on m._id = o.member_id
-    order by member_id asc
--- limit 5000000 offset 0"""
+query_1 = """ """
 
 # 3915922
 # print(query_1)
@@ -219,126 +170,7 @@ print("Loaded {} rows.".format(destination_table.num_rows))
 # new records / updated records into an append only table which will be called
 # member_rfm_log, which will keep a track of how the category of member evolved over time.
 
-log_append_query = '''
-INSERT `myglamm-india.data_science.member_rfm_log` (member_id, category, rfm_score, created_on) 
-select distinct 
-    member_id, 
-    category, 
-    rfm_score, 
-    created_on
-from (
-    select 
-        t1.member_id, 
-        t1.category, 
-        t1.rfm_score, 
-        t1.created_on
-    from 
-    (
-        select * from (
-            select 
-                *,
-                row_number() over (partition by member_id order by created_on desc) as rank
-            FROM 
-                `myglamm-india.data_science.member_rfm`
-        ) where rank = 1
-    ) t1 join (
-        select * from (
-            select 
-                *,
-                row_number() over (partition by member_id order by created_on desc) as rank
-            FROM 
-                `myglamm-india.data_science.member_rfm`
-        ) where rank = 2
-    ) t2 on t1.member_id=t2.member_id
-    where t1.category!=t2.category
-
-    union all
-
-    select 
-        t1.member_id, 
-        t1.category, 
-        t1.rfm_score, 
-        t1.created_on
-    from 
-    (
-        select * from (
-            select 
-                *,
-                row_number() over (partition by member_id order by created_on desc) as rank
-            FROM 
-                `myglamm-india.data_science.member_rfm`
-        ) where rank = 1
-    ) t1 left join (
-        select * from (
-            select 
-                *,
-                row_number() over (partition by member_id order by created_on desc) as rank
-            FROM 
-                `myglamm-india.data_science.member_rfm`
-        ) where rank = 2
-    ) t2 on t1.member_id=t2.member_id
-    where t1.member_id is not null and t2.member_id is null
-
-)
-
-''' 
-
-
-# query_1 = """
-# select 
-#     t1.member_id, 
-#     t1.category, 
-#     t1.rfm_score, 
-#     t1.created_on
-# from 
-# (
-#     select * from (
-#         select 
-#             *,
-#             row_number() over (partition by member_id order by created_on desc) as rank
-#         FROM 
-#             `myglamm-india.data_science.member_rfm`
-#     ) where rank = 1
-# ) t1 join (
-#     select * from (
-#         select 
-#             *,
-#             row_number() over (partition by member_id order by created_on desc) as rank
-#         FROM 
-#             `myglamm-india.data_science.member_rfm`
-#     ) where rank = 2
-# ) t2 on t1.member_id=t2.member_id
-# where t1.category!=t2.category 
-# --or (t2.member_id is null and t1.created_on='""" + tilldate + """')
-# -- and t1.member_id='61bcb72e3e70ab001b2c9018'
-
-# union all
-
-# select 
-#     t1.member_id, 
-#     t1.category, 
-#     t1.rfm_score, 
-#     t1.created_on
-# from 
-# (
-#     select * from (
-#         select 
-#             *,
-#             row_number() over (partition by member_id order by created_on desc) as rank
-#         FROM 
-#             `myglamm-india.data_science.member_rfm`
-#     ) where rank = 1
-# ) t1 left join (
-#     select * from (
-#         select 
-#             *,
-#             row_number() over (partition by member_id order by created_on desc) as rank
-#         FROM 
-#             `myglamm-india.data_science.member_rfm`
-#     ) where rank = 2
-# ) t2 on t1.member_id=t2.member_id
-# where t1.member_id is not null and t2.member_id is null
-# """
+log_append_query = ''
 
 log_append_query_job=client.query(log_append_query)
 
@@ -349,13 +181,7 @@ log_append_results = log_append_query_job.result()
 
 # de-duplicate table query to be run after new set of rfm data calculated members are updated in member_rfm table.
 dedup_query = '''
-create or replace table `myglamm-india.data_science.member_rfm` as
-select * except(rank) from (
-SELECT 
-  *,
-  row_number() over (partition by member_id order by created_on desc) as rank
-FROM `myglamm-india.data_science.member_rfm`
-) where rank = 1
+
 '''
 
 
@@ -369,39 +195,9 @@ dedup_results = dedup_query.result()
 # webengage sync the delta.
 
 
-# webengage_sync_rfm = """
-# select 
-#     t1.member_id,
-#     t1.category as new_rfm
-# from 
-# (
-#     select * from (
-#         select 
-#             *,
-#             row_number() over (partition by member_id order by created_on desc) as rank
-#         FROM 
-#             `myglamm-india.data_science.member_rfm`
-#     ) where rank = 1
-# ) t1 left join (
-#     select * from (
-#         select 
-#             *,
-#             row_number() over (partition by member_id order by created_on desc) as rank
-#         FROM 
-#             `myglamm-india.data_science.member_rfm`
-#     ) where rank = 2
-# ) t2 on t1.member_id=t2.member_id
-# where t1.category!=t2.category
-# -- and t1.member_id>'60bb2edfb7ff79001a2d86f0'
-# and t1.created_on = '""" + tilldate + """'
-# """
 
 webengage_sync_rfm = """
-select 
-    t1.member_id,
-    t1.category as new_rfm
-from `myglamm-india.data_science.member_rfm_log` t1
-where t1.created_on = '""" + tilldate + """'
+
 """
 
 # 3915922
@@ -412,11 +208,11 @@ where t1.created_on = '""" + tilldate + """'
 webengage_sync_rfm_query_job=client.query(webengage_sync_rfm)
 
 webengage_sync_rfm_results = webengage_sync_rfm_query_job.result()
-url = "https://acl.mgapis.com/dump-ms/dump"
+url = "https://a.b.com/dump-ms/dump"
 headers = {
   'accept': '*/*',
   'Content-Type': 'application/json',
-  'apiKey': 'fac2c144a7da65d81c939597bf983613'
+  'apiKey': 'kdjfghkdjfghehgj'
 }
 
 count = 0
@@ -437,7 +233,7 @@ for row in webengage_sync_rfm_results:
 
     if(counter<10):
         temp_arr.append({
-            "vendorCode": "mgp",
+            "vendorCode": "abc",
             "identifier": member_id,
             "key": "webengageSync",
             "value": {
@@ -463,28 +259,12 @@ for row in webengage_sync_rfm_results:
 
 '''
 
-curl --location --request POST 'https://acl.mgapis.com/dump-ms/dump' \
---header 'Content-Type: application/json' \
---header 'apiKey: fac2c144a7da65d81c939597bf983613' \
---data-raw '[
-    {
-        "vendorCode": "mgp",
-        "identifier": "59b27ca219141863361aa408",
-        "key": "webengageSync",
-        "value": {
-            "userId": "59b27ca219141863361aa408",
-            "attributes": {
-                "RFM Category": "Promising"
-            }
-        }
-    }
-]'
 
 '''
 
 # add deadmansnitch alert
 
-requests.request("GET","https://nosnch.in/5d97244a65")
+requests.request("GET","https://nosnch.in/5srf244a65")
 
 print('done')    
 
